@@ -5,6 +5,92 @@ from line_utils import vertical_intercepts_polar as vicp
 from line_utils import lines_weighted_average as lwa
 from line_utils import intersection_point
 
+def lines_horizontal_intercept(lines, limit, delta):
+    '''
+    Finds "horizontal" lines from array of all lines. For each "horizontal"
+    line finds two points in which it intersects vertical image borders. If two
+    lines intersect borders very close to each other, replace both with a
+    "weighted average" line.
+
+    Parameters:
+    lines: [[[float, float]]]
+        Array of lines defined by their polar coordinates. Each of the lines
+        must contain distance from origin at index 0 and angle in radians at
+        index 1.
+    limit: float
+        Coordinate of the second image border.
+    delta: float
+        Threshold for distance between intersection points of two lines.
+
+    Returns:
+    [(float, (int, int), (int, int))]
+        Array of horizontal lines. Each line tuple contains weight followed by
+        coordinates of two points.
+    '''
+    lines_horizontal = []
+    for line in lines:
+        distance = line[0][0]
+        angle = line[0][1]
+        similar = False
+        if abs(np.cos(angle)) < 0.1:
+            intercepts = hicp((distance, angle), limit)
+            new_line = (1, intercepts[1], intercepts[2])
+            for line_i in range(len(lines_horizontal)):
+                old_line = lines_horizontal[line_i]
+                average = lwa(old_line, new_line, delta)
+                if average[0]:
+                    average_trunc = (average[1], average[2], average[3])
+                    lines_horizontal[line_i] = average_trunc
+                    similar = True
+                    break
+            if not similar:
+                lines_horizontal.append(new_line)
+    lines_horizontal.sort(key = lambda x: x[1][1])
+    return lines_horizontal
+
+def lines_vertical_intercept(lines, limit, delta):
+    '''
+    Finds "vertical" lines from array of all lines. For each "vertical"
+    line finds two points in which it intersects horizontal image borders. If two
+    lines intersect borders very close to each other, replace both with a
+    "weighted average" line.
+
+    Parameters:
+    lines: [[[float, float]]]
+        Array of lines defined by their polar coordinates. Each of the lines
+        must contain distance from origin at index 0 and angle in radians at
+        index 1.
+    limit: float
+        Coordinate of the second image border.
+    delta: float
+        Threshold for distance between intersection points of two lines.
+
+    Returns:
+    [(float, (int, int), (int, int))]
+        Array of vertical lines. Each line tuple contains weight followed by
+        coordinates of two points.
+    '''
+    lines_vertical = []
+    for line in lines:
+        distance = line[0][0]
+        angle = line[0][1]
+        similar = False
+        if abs(np.sin(angle)) < 0.1:
+            intercepts = vicp((distance, angle), limit)
+            new_line = (1, intercepts[1], intercepts[2])
+            for line_i in range(len(lines_vertical)):
+                old_line = lines_vertical[line_i]
+                average = lwa(old_line, new_line, delta)
+                if average[0]:
+                    average_trunc = (average[1], average[2], average[3])
+                    lines_vertical[line_i] = average_trunc
+                    similar = True
+                    break
+            if not similar:
+                lines_vertical.append(new_line)
+    lines_vertical.sort(key = lambda x: x[1][0])
+    return lines_vertical
+
 def find_lines(source, display=False, **params):
     '''
     detects lines in image and returns their coordinates
@@ -31,50 +117,15 @@ def find_lines(source, display=False, **params):
     hough_votes = params.get('votes', 150)
     lines = cv2.HoughLines(image_intermediate, 1, np.pi / 180, hough_votes)
 
-    lines_horizontal = []
-    lines_vertical = []
+    image_h = image_original.shape[0]
+    image_w = image_original.shape[1]
     image_lines = np.copy(image_original) * 0
-    delta = params.get('delta', image_original.shape[0] / 18)
-
-    # TODO: separate giant if-else code blobs into comprehensible functions
-    for line in lines:
-        for distance, angle in line:
-            similar = False
-
-            if abs(np.cos(angle)) < 0.1:
-                intercepts = hicp((distance, angle), image_original.shape[1])
-                new_line = (1, intercepts[1], intercepts[2])
-                for line_i in range(len(lines_horizontal)):
-                    old_line = lines_horizontal[line_i]
-                    average = lwa(old_line, new_line, delta)
-                    if average[0]:
-                        average_trunc = (average[1], average[2], average[3])
-                        lines_horizontal[line_i] = average_trunc
-                        similar = True
-                        break
-                if not similar:
-                    lines_horizontal.append(new_line)
-
-            elif abs(np.sin(angle)) < 0.1:
-                intercepts = vicp((distance, angle), image_original.shape[0])
-                new_line = (1, intercepts[1], intercepts[2])
-                for line_i in range(len(lines_vertical)):
-                    old_line = lines_vertical[line_i]
-                    average = lwa(old_line, new_line, delta)
-                    if average[0]:
-                        average_trunc = (average[1], average[2], average[3])
-                        lines_vertical[line_i] = average_trunc
-                        similar = True
-                        break
-                if not similar:
-                    lines_vertical.append(new_line)
-    
-    
+    delta = params.get('delta', image_h / 18)
+    lines_horizontal = lines_horizontal_intercept(lines, image_w, delta)
+    lines_vertical = lines_vertical_intercept(lines, image_h, delta)
     len_vertical = len(lines_vertical)
     len_horizontal = len(lines_horizontal)
     points = [[(0, 0)] * len_vertical for _ in range(len_horizontal)]
-    lines_horizontal.sort(key = lambda x: x[1][1])
-    lines_vertical.sort(key = lambda x: x[1][0])
     for line_h in range(len_horizontal):
         line_a = (lines_horizontal[line_h][1], lines_horizontal[line_h][2])
         for line_v in range(len_vertical):

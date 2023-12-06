@@ -2,7 +2,7 @@
 
 ## About
 
-A little application made for the first semester "Project Practice" course.
+A small application made for the first semester "Project Practice" course.
 Was only tested on Linux, other platforms probably wont't work.
 
 ## Linux usage
@@ -32,9 +32,5 @@ Was only tested on Linux, other platforms probably wont't work.
 ## To-do
 
 1. Telegram integration
-2. Cutting sudoku into pieces
-3. ~~This is my last resort~~
-    
-    3.1 Digit recognition
-
-4. Simple recursive solver
+2. Digit recognition
+3. Simple recursive solver
