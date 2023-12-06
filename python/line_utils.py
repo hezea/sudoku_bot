@@ -1,5 +1,39 @@
 import numpy as np
 
+def intersection_point(line_a, line_b):
+    '''
+    Calculates an intersection point between two lines.
+    
+    Parameters:
+    line_a: ((float, float), (float, float))
+        Coordinates of the points of the first line. Must contain x coordinates
+        at indices 0 and y coordinates at indices 1.
+    line_b: ((float, float), (float, float))
+        Coordinates of the points of the second line. Must contain x
+        coordinates at indices 0 and y coordinates at indices 1.
+    
+    Returns:
+    (1, (int, int))
+        Status 1 and tuple, containing the coordinates of the intersection
+        point if possible.
+    (0, (0, 0))
+        Status 0 and a (0, 0) tuple if the lines are parallel.
+    '''
+    x_1, x_2 = line_a[0][0], line_b[0][0]
+    x_3, x_4 = line_a[1][0], line_b[1][0]
+    y_1, y_2 = line_a[0][1], line_b[0][1]
+    y_3, y_4 = line_a[1][1], line_b[1][1]
+    denominator = (x_1 - x_3) * (y_2 - y_4) - (y_1 - y_3) * (x_2 - x_4)
+    if denominator != 0:
+        point_x = (x_1 * y_3 - y_1 * x_3) * (x_2 - x_4)
+        point_x -= (x_1 - x_3) * (x_2 * y_4 - y_2 * x_4)
+        point_x = int(point_x / denominator)
+        point_y = (x_1 * y_3 - y_1 * x_3) * (y_2 - y_4)
+        point_y -= (y_1 - y_3) * (x_2 * y_4 - y_2 * x_4)
+        point_x = int(point_y / denominator)
+        return (1, (point_x, point_y))
+    return (0, (0, 0))
+
 def intersection_point_polar(line_a, line_b):
     '''
     Calculates an intersection point between two lines.

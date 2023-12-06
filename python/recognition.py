@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
-import line_utils as lu
+from line_utils import horizontal_intercepts_polar as hicp
+from line_utils import vertical_intercepts_polar as vicp
+from line_utils import lines_weighted_average as lwa
 
 def find_lines(source, display=False, **params):
     '''
@@ -22,9 +24,6 @@ def find_lines(source, display=False, **params):
     image_original = cv2.imread(source)
     image_intermediate = cv2.cvtColor(image_original, cv2.COLOR_BGR2GRAY)
 
-    #blur_kernel = (5, 5)
-    #image_intermediate = cv2.GaussianBlur(image_intermediate, blur_kernel, 0)
-
     canny_min, canny_max = 50, 150
     image_intermediate = cv2.Canny(image_intermediate, canny_min, canny_max)
 
@@ -36,36 +35,33 @@ def find_lines(source, display=False, **params):
     delta = params.get('delta', image_original.shape[0] / 18)
     for line in lines:
         for distance, angle in line:
+            similar = False
             if abs(np.cos(angle)) < 0.1:
-                intercepts = lu.horizontal_intercepts_polar(
-                    (distance, angle), image_original.shape[1])
-                similar = False
+                intercepts = hicp((distance, angle), image_original.shape[1])
+                new_line = (1, intercepts[1], intercepts[2])
                 for line_i in range(len(lines_horizontal)):
-                    average = lu.lines_weighted_average(
-                        lines_horizontal[line_i],
-                        (1, intercepts[1], intercepts[2]), delta)
+                    old_line = lines_horizontal[line_i]
+                    average = lwa(old_line, new_line, delta)
                     if average[0]:
-                        lines_horizontal[line_i] = (average[1], average[2],
-                            average[3])
+                        average_trunc = (average[1], average[2], average[3])
+                        lines_horizontal[line_i] = average_trunc
                         similar = True
                         break
                 if not similar:
-                    lines_horizontal.append((1, intercepts[1], intercepts[2]))
+                    lines_horizontal.append(new_line)
             elif abs(np.sin(angle)) < 0.1:
-                intercepts = lu.vertical_intercepts_polar(
-                    (distance, angle), image_original.shape[0])
-                similar = False
+                intercepts = vicp((distance, angle), image_original.shape[0])
+                new_line = (1, intercepts[1], intercepts[2])
                 for line_i in range(len(lines_vertical)):
-                    average = lu.lines_weighted_average(
-                        lines_vertical[line_i],
-                        (1, intercepts[1], intercepts[2]), delta)
+                    old_line = lines_vertical[line_i]
+                    average = lwa(old_line, new_line, delta)
                     if average[0]:
-                        lines_vertical[line_i] = (average[1], average[2],
-                            average[3])
+                        average_trunc = (average[1], average[2], average[3])
+                        lines_vertical[line_i] = average_trunc
                         similar = True
                         break
                 if not similar:
-                    lines_vertical.append((1, intercepts[1], intercepts[2]))
+                    lines_vertical.append(new_line)
 
     if (display):
         print(len(lines_horizontal), len(lines_vertical))
