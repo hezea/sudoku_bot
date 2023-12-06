@@ -1,9 +1,12 @@
 import cv2
 import numpy as np
+from keras.models import load_model
 from line_utils import horizontal_intercepts_polar as hicp
 from line_utils import vertical_intercepts_polar as vicp
 from line_utils import lines_weighted_average as lwa
 from line_utils import intersection_point
+
+
 
 def lines_horizontal_intercept(lines, limit, delta):
     '''
@@ -91,9 +94,9 @@ def lines_vertical_intercept(lines, limit, delta):
     lines_vertical.sort(key = lambda x: x[1][0])
     return lines_vertical
 
-def find_lines(source, display=False, **params):
+def find_sudoku(source, display=False, **params):
     '''
-    detects lines in image and returns their coordinates
+    detects sudoku in image and returns it's scheme
 
     source -- str
         file path from which to load image
@@ -145,7 +148,9 @@ def find_lines(source, display=False, **params):
         image_display = cv2.addWeighted(image_original, 0.8, image_lines, 1, 0)
         cv2.imshow("Detected lines", image_display)
         cv2.waitKey(0)
-    
+
+    model = load_model("models/mymodel.keras")
+    sudoku = [[0] * (len_vertical - 1) for _ in range(len_horizontal - 1)]
     for v in range(len_vertical - 1):
         for h in range(len_horizontal - 1):
             delta_x = int((points[v+1][h+1][0] - points[v][h][0]) * 0.1)
@@ -153,9 +158,15 @@ def find_lines(source, display=False, **params):
             x_1, x_2 = points[v][h][0] + delta_x, points[v+1][h+1][0] - delta_x
             y_1, y_2 = points[v][h][1] + delta_y, points[v+1][h+1][1] - delta_y
             image_crop = image_original[y_1:y_2, x_1:x_2]
-            cv2.imshow("Cropped images display in progress", image_crop)
-            cv2.waitKey(0)
-
-    return [lines_horizontal, lines_vertical]
-
-find_lines('images/test.jpg', True)
+            image_28 = cv2.resize(image_crop, (28, 28), interpolation= cv2.INTER_LINEAR)
+            image_theshold = cv2.cvtColor(image_28, cv2.COLOR_BGR2GRAY)
+            image_data = image_theshold.reshape(1, 28, 28, 1)
+            image_data = (255 - image_data) / 255
+            prediction = model.predict(image_data, verbose=0)
+            if prediction.max() < 0.4:
+                sudoku[v][h] = 0
+            else:
+                sudoku[v][h] = prediction.argmax()
+    for i in sudoku:
+        print(i)
+    return sudoku
