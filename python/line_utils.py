@@ -30,7 +30,7 @@ def intersection_point(line_a, line_b):
         point_x = int(point_x / denominator)
         point_y = (x_1 * y_3 - y_1 * x_3) * (y_2 - y_4)
         point_y -= (y_1 - y_3) * (x_2 * y_4 - y_2 * x_4)
-        point_x = int(point_y / denominator)
+        point_y = int(point_y / denominator)
         return (1, (point_x, point_y))
     return (0, (0, 0))
 
