@@ -119,6 +119,14 @@ def find_sudoku(source, display=False, **params):
     lines = horizontal_voting_session(lines, width, height)
     lines = vertical_voting_session(lines, width, height)
 
+    lines_horizontal = []
+    lines_vertical = []
+    for line in lines:
+        if line.inclination == 'horizontal':
+                lines_horizontal.append(line)
+        elif line.inclination == 'vertical':
+            lines_vertical.append(line)
+    
     if (display):
         lines_color = params.get('color', (255, 0, 0))
         for line in lines:
@@ -129,18 +137,30 @@ def find_sudoku(source, display=False, **params):
         image_display = cv2.addWeighted(image_original, 0.8, image_lines, 1, 0)
         cv2.imshow("Detected lines", image_display)
         cv2.waitKey(0)
-    """
+    
+    lines_horizontal.sort(key = lambda x: x.main_points[0][0])
+    lines_vertical.sort(key = lambda x: x.main_points[0][1])
+
+    points = [[0] * 10 for _ in range(10)]
+    for l1 in range(10):
+        for l2 in range(10):
+            points[l1][l2] = visible_intersection(lines_horizontal[l1], lines_vertical[l2], width, height)
+
     model = load_model("models/mymodel.keras")
-    sudoku = [[0] * (len_vertical - 1) for _ in range(len_horizontal - 1)]
-    for v in range(len_vertical - 1):
-        for h in range(len_horizontal - 1):
-            delta_x = int((points[v+1][h+1][0] - points[v][h][0]) * 0.1)
-            delta_y = int((points[v+1][h+1][1] - points[v][h][1]) * 0.1)
-            x_1, x_2 = points[v][h][0] + delta_x, points[v+1][h+1][0] - delta_x
-            y_1, y_2 = points[v][h][1] + delta_y, points[v+1][h+1][1] - delta_y
+    sudoku = [[0] * 9 for _ in range(9)]
+    for v in range(9):
+        for h in range(9):
+            x_1, x_2 = points[v][h][0], points[v+1][h+1][0]
+            y_1, y_2 = points[v][h][1], points[v+1][h+1][1]
             image_crop = image_original[y_1:y_2, x_1:x_2]
             image_28 = cv2.resize(image_crop, (28, 28), interpolation= cv2.INTER_LINEAR)
             image_theshold = cv2.cvtColor(image_28, cv2.COLOR_BGR2GRAY)
+            image_theshold[:4] = 255
+            image_theshold[-4:] = 255
+            for i in image_theshold:
+                i[:4] = 255
+                i[-4:] = 255
+            cv2.waitKey(0)
             image_data = image_theshold.reshape(1, 28, 28, 1)
             image_data = (255 - image_data) / 255
             prediction = model.predict(image_data, verbose=0)
@@ -150,5 +170,4 @@ def find_sudoku(source, display=False, **params):
                 sudoku[v][h] = prediction.argmax()
     for i in sudoku:
         print(i)
-    """
-    return None
+    return sudoku
