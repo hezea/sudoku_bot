@@ -1,154 +1,135 @@
 import cv2
 import numpy as np
 from keras.models import load_model
-from line_utils import horizontal_intercepts_polar as hicp
-from line_utils import vertical_intercepts_polar as vicp
-from line_utils import lines_weighted_average as lwa
-from line_utils import intersection_point
+from rendering import *
+from itertools import combinations
 
-
-
-def lines_horizontal_intercept(lines, limit, delta):
-    '''
-    Finds "horizontal" lines from array of all lines. For each "horizontal"
-    line finds two points in which it intersects vertical image borders. If two
-    lines intersect borders very close to each other, replace both with a
-    "weighted average" line.
-
-    Parameters:
-    lines: [[[float, float]]]
-        Array of lines defined by their polar coordinates. Each of the lines
-        must contain distance from origin at index 0 and angle in radians at
-        index 1.
-    limit: float
-        Coordinate of the second image border.
-    delta: float
-        Threshold for distance between intersection points of two lines.
-
-    Returns:
-    [(float, (int, int), (int, int))]
-        Array of horizontal lines. Each line tuple contains weight followed by
-        coordinates of two points.
-    '''
-    lines_horizontal = []
-    for line in lines:
-        distance = line[0][0]
-        angle = line[0][1]
+def assimilate_all(lines, width, height, threshold):
+    new_lines = []
+    for line1 in lines:
         similar = False
-        if abs(np.cos(angle)) < 0.1:
-            intercepts = hicp((distance, angle), limit)
-            new_line = (1, intercepts[1], intercepts[2])
-            for line_i in range(len(lines_horizontal)):
-                old_line = lines_horizontal[line_i]
-                average = lwa(old_line, new_line, delta)
-                if average[0]:
-                    average_trunc = (average[1], average[2], average[3])
-                    lines_horizontal[line_i] = average_trunc
+        for line2i in range(len(new_lines)):
+            line2 = new_lines[line2i]
+            p11, p12 = line1.main_points
+            p21, p22 = line2.main_points
+            ds = distance(p11, p21) + distance(p12, p22)
+            dd = distance(p11, p22) + distance(p12, p21)
+            if min(dd, ds) < threshold:
+                new_line = weighted_average(line1, line2, width, height)
+                if len(new_line.main_points) == 2:
+                    new_lines[line2i] = new_line
                     similar = True
                     break
-            if not similar:
-                lines_horizontal.append(new_line)
-    lines_horizontal.sort(key = lambda x: x[1][1])
-    return lines_horizontal
+        if not similar:
+            new_lines.append(line1)
+    return new_lines
 
-def lines_vertical_intercept(lines, limit, delta):
-    '''
-    Finds "vertical" lines from array of all lines. For each "vertical"
-    line finds two points in which it intersects horizontal image borders. If two
-    lines intersect borders very close to each other, replace both with a
-    "weighted average" line.
+def linear_votes(line, candidates, width, height):
+    points = []
+    mindiv, minind = 999999, []
+    for line1 in candidates:
+        point = visible_intersection(line, line1, width, height)
+        points.append(point)
+    for ind in combinations(range(len(points)), 10):
+        div = 0
+        consider = [points[i] for i in ind]
+        if None in consider:
+            continue
+        total_dist = distance(consider[0], consider[9])
+        for i in range(1, 10):
+            dist = distance(consider[i - 1], consider[i])
+            div += abs((total_dist / 9) - dist) / total_dist * 9
+        if div < mindiv:
+            mindiv = div
+            minind = ind
+    return minind
 
-    Parameters:
-    lines: [[[float, float]]]
-        Array of lines defined by their polar coordinates. Each of the lines
-        must contain distance from origin at index 0 and angle in radians at
-        index 1.
-    limit: float
-        Coordinate of the second image border.
-    delta: float
-        Threshold for distance between intersection points of two lines.
-
-    Returns:
-    [(float, (int, int), (int, int))]
-        Array of vertical lines. Each line tuple contains weight followed by
-        coordinates of two points.
-    '''
-    lines_vertical = []
+def horizontal_voting_session(lines, width, height):
+    candidates, voters, votes = [], [], []
+    new_lines = []
     for line in lines:
-        distance = line[0][0]
-        angle = line[0][1]
-        similar = False
-        if abs(np.sin(angle)) < 0.1:
-            intercepts = vicp((distance, angle), limit)
-            new_line = (1, intercepts[1], intercepts[2])
-            for line_i in range(len(lines_vertical)):
-                old_line = lines_vertical[line_i]
-                average = lwa(old_line, new_line, delta)
-                if average[0]:
-                    average_trunc = (average[1], average[2], average[3])
-                    lines_vertical[line_i] = average_trunc
-                    similar = True
-                    break
-            if not similar:
-                lines_vertical.append(new_line)
-    lines_vertical.sort(key = lambda x: x[1][0])
-    return lines_vertical
+        if line.inclination == 'vertical':
+            candidates.append(line)
+            votes.append(0)
+        elif line.inclination == 'horizontal':
+            voters.append(line)
+    candidates.sort(key=lambda x: x.main_points[0][0])
+    voters.sort(key=lambda x: x.main_points[0][1])
+    for line in voters:
+        results = linear_votes(line, candidates, width, height)
+        for i in results:
+            votes[i] += 1
+    res = sorted(range(len(votes)), key = lambda sub: votes[sub])[-10:]
+    for i in res:
+        new_lines.append(candidates[i])
+    for line in voters:
+        new_lines.append(line)
+    return new_lines
+
+def vertical_voting_session(lines, width, height):
+    candidates, voters, votes = [], [], []
+    new_lines = []
+    for line in lines:
+        if line.inclination == 'horizontal':
+            candidates.append(line)
+            votes.append(0)
+        elif line.inclination == 'vertical':
+            voters.append(line)
+    candidates.sort(key=lambda x: x.main_points[0][1])
+    voters.sort(key=lambda x: x.main_points[0][0])
+    for line in voters:
+        results = linear_votes(line, candidates, width, height)
+        for i in results:
+            votes[i] += 1
+    res = sorted(range(len(votes)), key = lambda sub: votes[sub])[-10:]
+    for i in res:
+        new_lines.append(candidates[i])
+    for line in voters:
+        new_lines.append(line)
+    return new_lines
 
 def find_sudoku(source, display=False, **params):
-    '''
-    detects sudoku in image and returns it's scheme
-
-    source -- str
-        file path from which to load image
-    display -- bool -- False
-        show image on the screen with all detected lines highlited once
-        finished
-    **params[votes] -- int -- 150
-        threshold of intersections in Hough grid to be considered a line
-    **params[color] -- int(3) -- (255, 0, 0)
-        color of highlited lines on image that's shown when "display" is True
-    **params[delta] -- int -- image height / 18
-        the minimum difference of line intercepts on both sides of the image
-        at which they are still considered different lines
-    '''
     image_original = cv2.imread(source)
     image_intermediate = cv2.cvtColor(image_original, cv2.COLOR_BGR2GRAY)
 
     canny_min, canny_max = 50, 150
     image_intermediate = cv2.Canny(image_intermediate, canny_min, canny_max)
 
-    hough_votes = params.get('votes', 150)
-    lines = cv2.HoughLines(image_intermediate, 1, np.pi / 180, hough_votes)
+    hough_votes = params.get('votes', 100)
+    lines_raw = cv2.HoughLines(image_intermediate, 1, np.pi / 180, hough_votes)
 
-    image_h = image_original.shape[0]
-    image_w = image_original.shape[1]
+    height = image_original.shape[0]
+    width = image_original.shape[1]
     image_lines = np.copy(image_original) * 0
-    delta = params.get('delta', image_h / 18)
-    lines_horizontal = lines_horizontal_intercept(lines, image_w, delta)
-    lines_vertical = lines_vertical_intercept(lines, image_h, delta)
-    len_vertical = len(lines_vertical)
-    len_horizontal = len(lines_horizontal)
-    points = [[(0, 0)] * len_vertical for _ in range(len_horizontal)]
-    for line_h in range(len_horizontal):
-        line_a = (lines_horizontal[line_h][1], lines_horizontal[line_h][2])
-        for line_v in range(len_vertical):
-            line_b = (lines_vertical[line_v][1], lines_vertical[line_v][2])
-            points[line_h][line_v] = intersection_point(line_a, line_b)[1]
+    lines = []
+    for line in lines_raw:
+        new_line = get_line(line[0][0], line[0][1], width, height)
+        if len(new_line.main_points) == 2 and new_line.inclination != 'none':
+            if new_line.inclination == 'vertical':
+                a = visible_intersection(new_line, get_line(0, np.pi / 2, width, height), width, height)
+                b = visible_intersection(new_line, get_line(height, np.pi / 2, width, height), width, height)
+                if a and b:
+                    lines.append(new_line)
+            else:
+                a = visible_intersection(new_line, get_line(0, 0, width, height), width, height)
+                b = visible_intersection(new_line, get_line(width, 0, width, height), width, height)
+                if a and b:
+                    lines.append(new_line)
+    lines = assimilate_all(lines, width, height, width / 18)
+    lines = horizontal_voting_session(lines, width, height)
+    lines = vertical_voting_session(lines, width, height)
 
     if (display):
-        print(len_horizontal, len_vertical)
         lines_color = params.get('color', (255, 0, 0))
-        for _, point1, point2 in lines_horizontal:
+        for line in lines:
+            point1 = line.main_points[0]
+            point2 = line.main_points[1]
             cv2.line(image_lines, point1, point2, lines_color, 5)
-        for _, point1, point2 in lines_vertical:
-            cv2.line(image_lines, point1, point2, lines_color, 5)
-        for row in points:
-            for point in row:
-                cv2.circle(image_lines, point, radius=5, color=(0, 0, 255), thickness=-1)
+            #cv2.circle(image_lines, point, radius=10, color=(0, 0, 255), thickness=-1)
         image_display = cv2.addWeighted(image_original, 0.8, image_lines, 1, 0)
         cv2.imshow("Detected lines", image_display)
         cv2.waitKey(0)
-
+    """
     model = load_model("models/mymodel.keras")
     sudoku = [[0] * (len_vertical - 1) for _ in range(len_horizontal - 1)]
     for v in range(len_vertical - 1):
@@ -169,4 +150,5 @@ def find_sudoku(source, display=False, **params):
                 sudoku[v][h] = prediction.argmax()
     for i in sudoku:
         print(i)
-    return sudoku
+    """
+    return None
